@@ -1,3 +1,4 @@
+// Insecure Social Media App with All Known Vulnerabilities
 const express = require('express');
 const app = express();
 const bodyParser = require('body-parser');
@@ -5,15 +6,13 @@ const bodyParser = require('body-parser');
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// In-memory data stores (not persistent)
-let users = {}; // username: password (plaintext)
+// --- Data Stores (In-memory, insecure) ---
+let users = {}; // username: plaintextPassword
 let posts = []; // {author, content}
-let comments = {}; // postIndex: [{author, comment}]
+let comments = {}; // postId: [{author, comment}]
+let currentUser = null; // No session management, global variable
 
-// Session simulation (insecure, no cookies or sessions)
-let currentUser = null;
-
-// --- Register ---
+// --- Register (No validation, duplicate overwrite, plaintext password) ---
 app.get('/register', (req, res) => {
   res.send(`
     <h2>Register</h2>
@@ -28,13 +27,12 @@ app.get('/register', (req, res) => {
 
 app.post('/register', (req, res) => {
   const { username, password } = req.body;
-  // No validation, duplicate overwrite
-  users[username] = password;
-  currentUser = username; // auto login after registration
+  users[username] = password; // No hashing, no validation
+  currentUser = username; // Auto login
   res.redirect('/');
 });
 
-// --- Login ---
+// --- Login (No validation, plaintext password) ---
 app.get('/login', (req, res) => {
   res.send(`
     <h2>Login</h2>
@@ -50,7 +48,7 @@ app.get('/login', (req, res) => {
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   if (users[username] && users[username] === password) {
-    currentUser = username; // no session or cookie management
+    currentUser = username; // No session cookies, insecure
     res.redirect('/');
   } else {
     res.send('Invalid credentials. <a href="/login">Try again</a>');
@@ -63,7 +61,7 @@ app.get('/logout', (req, res) => {
   res.redirect('/');
 });
 
-// --- Create Post ---
+// --- Create Post (No sanitization, XSS) ---
 app.get('/post', (req, res) => {
   if (!currentUser) return res.redirect('/login');
   res.send(`
@@ -77,28 +75,25 @@ app.get('/post', (req, res) => {
 });
 
 app.post('/post', (req, res) => {
-  if (!currentUser) return res.redirect('/login');
   const { content } = req.body;
-  // No sanitization, XSS possible
+  // No sanitization, XSS attack possible
   posts.push({ author: currentUser, content: content });
   res.redirect('/');
 });
 
-// --- View Feed ---
+// --- View Feed (No pagination, no filtering) ---
 app.get('/', (req, res) => {
-  let feedHtml = '<h1>Social Feed</h1>';
-
+  let html = `<h1>Social Feed</h1>`;
   if (currentUser) {
-    feedHtml += `<p>Logged in as ${currentUser} | <a href="/logout">Logout</a></p>
-    <a href="/post">Create Post</a>`;
+    html += `<p>Logged in as ${currentUser} | <a href="/logout">Logout</a></p>
+             <a href="/post">Create Post</a>`;
   } else {
-    feedHtml += `<a href="/login">Login</a> | <a href="/register">Register</a>`;
+    html += `<a href="/login">Login</a> | <a href="/register">Register</a>`;
   }
-
   // Show posts in reverse order
   for (let i = posts.length - 1; i >= 0; i--) {
     const post = posts[i];
-    feedHtml += `
+    html += `
       <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px;">
         <p><b>${post.author}</b> says:</p>
         <p>${post.content}</p>
@@ -111,14 +106,13 @@ app.get('/', (req, res) => {
       </div>
     `;
   }
-
-  res.send(feedHtml);
+  res.send(html);
 });
 
-// --- Delete Post (no auth, IDOR) ---
+// --- Delete Post (No auth / IDOR) ---
 app.get('/delete/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  // No auth check
+  // No auth check, anyone can delete any post
   if (posts[id]) {
     delete posts[id];
     delete comments[id];
@@ -126,7 +120,7 @@ app.get('/delete/:id', (req, res) => {
   res.redirect('/');
 });
 
-// --- Comments ---
+// --- Comments (No sanitization, XSS) ---
 app.get('/comments/:id', (req, res) => {
   const id = parseInt(req.params.id);
   const postComments = comments[id] || [];
@@ -142,12 +136,12 @@ app.post('/comments/:id', (req, res) => {
   const id = parseInt(req.params.id);
   const commentText = req.body.comment;
   if (!comments[id]) comments[id] = [];
-  // No sanitization, XSS:
+  // No sanitization, XSS
   comments[id].push({ author: currentUser, comment: commentText });
   res.redirect(`/comments/${id}`);
 });
 
-// --- Delete comment (no auth) ---
+// --- Delete Comment (No auth) ---
 app.get('/delete-comment/:postId/:commentId', (req, res) => {
   const postId = parseInt(req.params.postId);
   const commentId = parseInt(req.params.commentId);
