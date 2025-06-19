@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>My Social Media</title>
+<!-- Missing security headers, no CSP, no X-Frame-Options -->
+<style>
+  body { font-family: Arial, sans-serif; }
+  .post { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h1>My Social Media</h1>
+
+<!-- User Login & Registration (No validation, insecure) -->
+<div id="auth-section">
+  <h2>Login</h2>
+  <input type="text" id="login-user" placeholder="Username" />
+  <input type="password" id="login-pass" placeholder="Password" />
+  <button onclick="login()">Login</button>
+  <h2>Register</h2>
+  <input type="text" id="reg-user" placeholder="Username" />
+  <input type="password" id="reg-pass" placeholder="Password" />
+  <button onclick="register()">Register</button>
+</div>
+
+<hr />
+
+<!-- Create Post -->
+<div id="post-section" style="display:none;">
+  <h2>Create a Post</h2>
+  <textarea id="post-content" rows="4" cols="50"></textarea><br />
+  <button onclick="createPost()">Post</button>
+</div>
+
+<!-- Feed -->
+<h2>Feed</h2>
+<div id="feed"></div>
+
+<script>
+  // In-memory data stores (not persistent)
+  const users = {}; // username: password (plaintext, insecure)
+  const posts = []; // {author, content}
+  let currentUser = null;
+
+  // --- Authentication ---
+  function register() {
+    const username = document.getElementById('reg-user').value;
+    const password = document.getElementById('reg-pass').value;
+    // No validation, duplicate check, or password hashing
+    users[username] = password;
+    alert('Registered! You can now login.');
+  }
+
+  function login() {
+    const username = document.getElementById('login-user').value;
+    const password = document.getElementById('login-pass').value;
+    if (users[username] && users[username] === password) {
+      currentUser = username;
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('post-section').style.display = 'block';
+      renderFeed();
+    } else {
+      alert('Invalid credentials');
+    }
+  }
+
+  // --- Create Post (No sanitization, XSS possible) ---
+  function createPost() {
+    const content = document.getElementById('post-content').value;
+    // No validation, allow HTML/JS injection
+    posts.push({ author: currentUser, content: content });
+    document.getElementById('post-content').value = '';
+    renderFeed();
+  }
+
+  // --- Render Feed ---
+  function renderFeed() {
+    const feedDiv = document.getElementById('feed');
+    feedDiv.innerHTML = '';
+    for (let i = posts.length - 1; i >= 0; i--) {
+      const post = posts[i];
+      const postDiv = document.createElement('div');
+      postDiv.className = 'post';
+
+      // Vulnerable to XSS
+      postDiv.innerHTML = `
+        <p><b>${post.author}</b> says:</p>
+        <p>${post.content}</p>
+        <button onclick="deletePost(${i})">Delete</button>
+        <button onclick="viewComments(${i})">Comments</button>
+        <div id="comments-${i}" style="margin-left:20px;"></div>
+        <hr />
+      `;
+      feedDiv.appendChild(postDiv);
+    }
+  }
+
+  // --- Delete Post (No auth, anyone can delete) ---
+  function deletePost(index) {
+    // No auth check
+    posts.splice(index, 1);
+    renderFeed();
+  }
+
+  // --- Comments ---
+  const comments = {}; // postIndex: [{author, comment}]
+  function viewComments(postIndex) {
+    const comDiv = document.getElementById(`comments-${postIndex}`);
+    comDiv.innerHTML = '';
+    if (!comments[postIndex]) comments[postIndex] = [];
+    // Show existing comments
+    comments[postIndex].forEach((c, idx) => {
+      comDiv.innerHTML += `<p><b>${c.author}</b>: ${c.comment} <button onclick="deleteComment(${postIndex}, ${idx})">Delete</button></p>`;
+    });
+    // Add comment input
+    comDiv.innerHTML += `
+      <input type="text" id="comment-input-${postIndex}" placeholder="Comment" />
+      <button onclick="addComment(${postIndex})">Add Comment</button>
+    `;
+  }
+
+  function addComment(postIndex) {
+    const commentText = document.getElementById(`comment-input-${postIndex}`).value;
+    // No sanitization, XSS
+    if (!comments[postIndex]) comments[postIndex] = [];
+    comments[postIndex].push({ author: currentUser, comment: commentText });
+    viewComments(postIndex);
+  }
+
+  function deleteComment(postIndex, commentIndex) {
+    // No auth check
+    comments[postIndex].splice(commentIndex, 1);
+    viewComments(postIndex);
+  }
+</script>
+
+</body>
+</html>
